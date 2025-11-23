@@ -1,204 +1,367 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+
+from backend.config import (
+    CURRENT_YEAR_BRS,
+    CURRENT_YEAR_FRS,
+    CURRENT_YEAR_ERS,
+    CURRENT_YEAR_LABEL,
+)
 from backend.rag import explain_simulation_results
-from backend.config import CURRENT_YEAR_BRS, CURRENT_YEAR_FRS, CURRENT_YEAR_ERS
 
+# NOTE: Do NOT call st.set_page_config here; it's already called in Home.py.
 
-from backend.simulator import (
-    RetirementInputs,
-    build_scenarios,
-    classify_vs_retirement_sums,
+st.title("🧮 CPF Retirement Planning Simulator")
+
+st.markdown(
+    """
+This tool lets you run a **simplified projection** of your CPF retirement savings, 
+based on a few basic assumptions.
+
+You can explore:
+
+- How your savings might grow until a chosen retirement age  
+- How your projected balance compares to **BRS / FRS / ERS**  
+- A narrative explanation of what the numbers might mean  
+
+All results are **illustrative only** and do *not* reflect your actual CPF balances.
+"""
 )
 
-# Placeholder: you will later read these from config or RAG
-CURRENT_YEAR_BRS = 106_500.0  # example only, update to latest official numbers
-CURRENT_YEAR_FRS = 213_000.0
-CURRENT_YEAR_ERS = 426_000.0
-
-st.title("🧮 Retirement Planning Simulator")
-
-st.write(
-    """
-    This simulator provides a **simplified, illustrative** projection of your CPF 
-    retirement savings based on your inputs.  
-    It is **not** an official CPF calculator. For exact figures, please use 
-    CPF's official tools.
-    """
+st.markdown(
+    f"""
+**Reference (for context only, not exact):**  
+- Basic Retirement Sum (BRS) for cohort year {CURRENT_YEAR_LABEL}: ~S${CURRENT_YEAR_BRS:,.0f}  
+- Full Retirement Sum (FRS) for cohort year {CURRENT_YEAR_LABEL}: ~S${CURRENT_YEAR_FRS:,.0f}  
+- Enhanced Retirement Sum (ERS) for cohort year {CURRENT_YEAR_LABEL}: ~S${CURRENT_YEAR_ERS:,.0f}  
+"""
 )
 
-with st.form("retirement_sim_form"):
-    col1, col2 = st.columns(2)
+st.markdown("---")
 
-    with col1:
-        current_age = st.number_input(
-            "Current age",
-            min_value=18,
-            max_value=70,
-            value=35,
-            step=1,
-        )
-        retirement_age = st.number_input(
-            "Planned retirement age",
-            min_value=current_age + 1,
-            max_value=75,
-            value=65,
-            step=1,
-        )
-        current_savings = st.number_input(
-            "Current total CPF savings (S$)",
-            min_value=0.0,
-            value=50_000.0,
-            step=1_000.0,
-            format="%.2f",
-        )
+# ---------------------------------------------------------------------
+# Helpers: projection + classification
+# ---------------------------------------------------------------------
 
-    with col2:
-        monthly_contribution = st.number_input(
-            "Estimated monthly CPF contribution towards retirement (S$)",
-            min_value=0.0,
-            value=1_000.0,
-            step=50.0,
-            format="%.2f",
-            help="You can approximate this using your payslip or CPF contribution breakdown.",
-        )
-        salary_growth_rate_pct = st.slider(
-            "Expected annual salary growth rate (%)",
-            min_value=0.0,
-            max_value=5.0,
-            value=2.0,
-            step=0.5,
-        )
-        return_rate_choice = st.radio(
-            "Assumed effective annual return on CPF retirement savings",
-            options=[
-                "Conservative (3.0%)",
-                "Typical CPF-style (3.5%)",
-                "Optimistic (4.0%)",
-            ],
-            index=1,
-        )
 
-    submitted = st.form_submit_button("Run simulation")
+def run_projection(
+    current_age: int,
+    retirement_age: int,
+    current_savings: float,
+    monthly_contribution: float,
+    salary_growth_rate_pct: float,
+    assumed_return_rate_pct: float,
+) -> pd.DataFrame:
+    years = list(range(current_age, retirement_age + 1))
+    balance = current_savings
+    monthly_contrib = monthly_contribution
 
-if submitted:
-    # Map choice to numeric rate
-    if "3.0" in return_rate_choice:
-        assumed_return_rate = 0.03
-    elif "3.5" in return_rate_choice:
-        assumed_return_rate = 0.035
-    else:
-        assumed_return_rate = 0.04
+    records = []
 
-    inputs = RetirementInputs(
-        current_age=int(current_age),
-        retirement_age=int(retirement_age),
-        current_savings=float(current_savings),
-        monthly_contribution=float(monthly_contribution),
-        salary_growth_rate=salary_growth_rate_pct / 100.0,
-        assumed_return_rate=assumed_return_rate,
-    )
+    growth_rate = salary_growth_rate_pct / 100.0
+    return_rate = assumed_return_rate_pct / 100.0
 
-    try:
-        scenarios = build_scenarios(inputs)
-    except ValueError as e:
-        st.error(str(e))
-        st.stop()
-
-    # Build DataFrame for display
-    df = pd.DataFrame(
-        [
+    for age in years:
+        records.append(
             {
-                "Scenario": s.name,
-                "Retirement age": s.retirement_age,
-                "Projected savings (S$)": round(s.projected_savings, 2),
-                "Notes": s.notes,
+                "Age": age,
+                "Year": age - current_age,  # years from now
+                "Projected savings (S$)": balance,
             }
-            for s in scenarios
-        ]
-    )
-
-    st.subheader("📊 Scenario comparison")
-    st.dataframe(df, use_container_width=True)
-
-    # Classification vs BRS/FRS/ERS for base scenario
-    base = scenarios[0]
-    classification = classify_vs_retirement_sums(
-        base.projected_savings,
-        CURRENT_YEAR_BRS,
-        CURRENT_YEAR_FRS,
-        CURRENT_YEAR_ERS,
-    )
-
-    st.subheader("🎯 Interpretation (simplified)")
-    col_left, col_right = st.columns([2, 1])
-
-    with col_left:
-        st.markdown(
-            f"""
-            **Base case – retire at age {base.retirement_age}:**
-
-            - Projected savings: **S${base.projected_savings:,.0f}**  
-            - Classification: **{classification['label']}**  
-            - Relative to FRS: **{classification['multiple_of_frs']}**
-            """
         )
+        # end of year: apply interest + contributions
+        annual_contrib = monthly_contrib * 12.0
+        balance = balance * (1.0 + return_rate) + annual_contrib
+        monthly_contrib *= 1.0 + growth_rate
 
-    with col_right:
-        st.markdown("**Reference (current year, for illustration):**")
-        st.write(f"- BRS: S${CURRENT_YEAR_BRS:,.0f}")
-        st.write(f"- FRS: S${CURRENT_YEAR_FRS:,.0f}")
-        st.write(f"- ERS: S${CURRENT_YEAR_ERS:,.0f}")
+    df = pd.DataFrame(records)
+    return df
 
-    # Simple bar chart of scenarios
-    st.subheader("📈 Visual comparison")
 
-    fig, ax = plt.subplots()
-    ax.bar(
-        df["Scenario"],
-        df["Projected savings (S$)"],
-    )
-    ax.set_ylabel("Projected savings (S$)")
-    ax.set_xlabel("Scenario")
-    ax.tick_params(axis="x", rotation=15)
-    st.pyplot(fig)
+def classify_against_frs(final_amount: float) -> dict:
+    ratio = final_amount / CURRENT_YEAR_FRS if CURRENT_YEAR_FRS > 0 else 0.0
 
-    st.info(
-        """
-        ⚠️ **Disclaimer:** This is an educational illustration.  
-        Actual CPF balances and payouts depend on your CPF account composition, 
-        future policies, actual interest rates, and CPF LIFE plan. 
-        Please refer to CPF’s official calculators for precise estimates.
-        """
-    )
+    if ratio < 0.8:
+        label = "Below FRS"
+    elif 0.8 <= ratio <= 1.2:
+        label = "Around FRS"
+    elif 1.2 < ratio <= 1.8:
+        label = "Between FRS and ERS"
+    else:
+        label = "At or above ERS (approx.)"
 
-    # --- LLM-driven explanation section ---
-    st.subheader("🧠 Explanation (LLM-generated, educational only)")
-
-    user_inputs_dict = {
-        "current_age": current_age,
-        "retirement_age": retirement_age,
-        "current_savings": current_savings,
-        "monthly_contribution": monthly_contribution,
-        "salary_growth_rate_pct": salary_growth_rate_pct,
-        "assumed_return_rate": assumed_return_rate,
+    return {
+        "label": label,
+        "multiple_of_frs": f"≈ {ratio:0.2f} × FRS" if CURRENT_YEAR_FRS > 0 else "N/A",
     }
 
-    scenarios_dicts = df.to_dict(orient="records")
+
+# ---------------------------------------------------------------------
+# Initialise session_state for simulation
+# ---------------------------------------------------------------------
+
+if "simulation_ready" not in st.session_state:
+    st.session_state.simulation_ready = False
+    st.session_state.projection_df = None
+    st.session_state.classification = None
+    st.session_state.sim_inputs = None
+
+# Defaults for inputs (used for presets)
+default_values = {
+    "current_age": 35,
+    "retirement_age": 65,
+    "current_savings": 50_000.0,
+    "monthly_contribution": 800.0,
+    "salary_growth_rate_pct": 2.0,
+    "assumed_return_rate_pct": 4.0,
+    "target_income": 2000.0,
+}
+
+for k, v in default_values.items():
+    st.session_state.setdefault(k, v)
+
+st.session_state.setdefault("last_preset", "Custom inputs")
+
+
+def apply_preset(preset_name: str):
+    """
+    Set session_state values for inputs based on chosen preset.
+    """
+    if preset_name == "Typical 35-year-old (mid-income)":
+        st.session_state.current_age = 35
+        st.session_state.retirement_age = 65
+        st.session_state.current_savings = 60_000.0
+        st.session_state.monthly_contribution = 900.0
+        st.session_state.salary_growth_rate_pct = 2.0
+        st.session_state.assumed_return_rate_pct = 4.0
+        st.session_state.target_income = 2200.0
+
+    elif preset_name == "Age 45, catching up":
+        st.session_state.current_age = 45
+        st.session_state.retirement_age = 65
+        st.session_state.current_savings = 140_000.0
+        st.session_state.monthly_contribution = 1_000.0
+        st.session_state.salary_growth_rate_pct = 1.5
+        st.session_state.assumed_return_rate_pct = 4.0
+        st.session_state.target_income = 2500.0
+
+    elif preset_name == "Near retirement (age 55)":
+        st.session_state.current_age = 55
+        st.session_state.retirement_age = 65
+        st.session_state.current_savings = 260_000.0
+        st.session_state.monthly_contribution = 1_100.0
+        st.session_state.salary_growth_rate_pct = 1.0
+        st.session_state.assumed_return_rate_pct = 4.0
+        st.session_state.target_income = 2500.0
+
+    # Custom inputs: do nothing (keep whatever is in session_state)
+
+
+# ---------------------------------------------------------------------
+# Layout: Inputs + Results in tabs
+# ---------------------------------------------------------------------
+
+tab_inputs, tab_results = st.tabs(["🧮 Simulation inputs", "📊 Results & explanation"])
+
+with tab_inputs:
+    st.subheader("Enter your details (all values are approximate)")
+
+    preset_options = [
+        "Custom inputs",
+        "Typical 35-year-old (mid-income)",
+        "Age 45, catching up",
+        "Near retirement (age 55)",
+    ]
+
+    preset = st.selectbox(
+        "Quick presets (optional)",
+        options=preset_options,
+        index=preset_options.index(st.session_state.last_preset),
+        help="Select a scenario to pre-fill the form, or choose 'Custom inputs' to set your own values.",
+    )
+
+    if preset != st.session_state.last_preset:
+        st.session_state.last_preset = preset
+        apply_preset(preset)
+        st.experimental_rerun()
+
+    with st.form("retirement_sim_form"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            current_age = st.slider(
+                "Current age",
+                min_value=21,
+                max_value=65,
+                key="current_age",
+            )
+            retirement_age = st.slider(
+                "Planned retirement age",
+                min_value=50,
+                max_value=70,
+                key="retirement_age",
+            )
+            current_savings = st.number_input(
+                "Current CPF savings (S$)",
+                min_value=0.0,
+                step=1000.0,
+                key="current_savings",
+            )
+
+        with col2:
+            monthly_contribution = st.number_input(
+                "Current monthly CPF contribution (S$)",
+                min_value=0.0,
+                step=50.0,
+                key="monthly_contribution",
+            )
+            salary_growth_rate_pct = st.slider(
+                "Expected annual growth in contributions",
+                min_value=0.0,
+                max_value=5.0,
+                step=0.5,
+                key="salary_growth_rate_pct",
+                help="This is a simplified assumption and does not reflect official CPF projections.",
+            )
+            assumed_return_rate_pct = st.slider(
+                "Assumed annual CPF return rate",
+                min_value=2.0,
+                max_value=5.0,
+                step=0.5,
+                key="assumed_return_rate_pct",
+                help="Illustrative blended rate, not an official OA/SA/MA breakdown.",
+            )
+
+        target_income = st.number_input(
+            "Target retirement income per month (S$, optional)",
+            min_value=0.0,
+            step=100.0,
+            key="target_income",
+        )
+
+        submitted = st.form_submit_button("Run simulation")
+
+    if submitted:
+        if retirement_age <= current_age:
+            st.error("Planned retirement age must be **greater than** current age.")
+        else:
+            with st.spinner("Running projection..."):
+                df = run_projection(
+                    current_age=current_age,
+                    retirement_age=retirement_age,
+                    current_savings=current_savings,
+                    monthly_contribution=monthly_contribution,
+                    salary_growth_rate_pct=salary_growth_rate_pct,
+                    assumed_return_rate_pct=assumed_return_rate_pct,
+                )
+
+            final_amount = float(df["Projected savings (S$)"].iloc[-1])
+            classification = classify_against_frs(final_amount)
+
+            st.session_state.simulation_ready = True
+            st.session_state.projection_df = df
+            st.session_state.classification = classification
+            st.session_state.sim_inputs = {
+                "current_age": current_age,
+                "retirement_age": retirement_age,
+                "current_savings": current_savings,
+                "monthly_contribution": monthly_contribution,
+                "salary_growth_rate_pct": salary_growth_rate_pct,
+                "assumed_return_rate_pct": assumed_return_rate_pct,
+                "target_retirement_income": target_income,
+            }
+
+            st.success(
+                "🎉 Your simulation is ready! Click on the **📊 Results & explanation** tab to view it."
+            )
+            st.info(
+                "You can adjust your inputs and re-run the simulation at any time. "
+                "The latest results will always appear in the Results tab."
+            )
+
+    # Show last simulation summary (if available)
+    if st.session_state.simulation_ready and st.session_state.projection_df is not None:
+        df_last = st.session_state.projection_df
+        final_amount_last = float(df_last["Projected savings (S$)"].iloc[-1])
+        classification_last = st.session_state.classification
+        inputs_last = st.session_state.sim_inputs
+
+        st.markdown("### 📌 Last simulation summary")
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Retirement age", f"{inputs_last['retirement_age']} years")
+        col_b.metric("Projected CPF savings", f"S${final_amount_last:,.0f}")
+        col_c.metric("Relative to FRS", classification_last["multiple_of_frs"])
+        st.caption("This summary reflects the most recent simulation you ran.")
+
+
+with tab_results:
+    if not st.session_state.get("simulation_ready", False):
+        st.info("Run a simulation in the **🧮 Simulation inputs** tab to see results here.")
+        st.stop()
+
+    df = st.session_state.projection_df
+    classification = st.session_state.classification
+    sim_inputs = st.session_state.sim_inputs
+
+    final_amount = float(df["Projected savings (S$)"].iloc[-1])
+    retirement_age = sim_inputs["retirement_age"]
+    target_income = sim_inputs["target_retirement_income"]
+
+    st.subheader("📌 Scenario summary")
+    col_a, col_b, col_c = st.columns(3)
+
+    col_a.metric("Retirement age", f"{retirement_age} years")
+    col_b.metric("Projected CPF savings", f"S${final_amount:,.0f}")
+    col_c.metric("Relative to FRS", classification["multiple_of_frs"])
+
+    st.caption(
+        "Classification is approximate and uses the current FRS as a benchmark for illustration."
+    )
+
+    st.markdown("### 📈 Savings over time")
+    st.line_chart(df.set_index("Age")["Projected savings (S$)"])
+
+    st.markdown("### 📋 Detailed table")
+    st.dataframe(
+        df.style.format({"Projected savings (S$)": "S${:,.0f}"}),
+        use_container_width=True,
+    )
+
+    st.markdown("---")
+    st.subheader("🧠 Explanation (AI-generated)")
+
+    scenarios_dicts = [
+        {
+            "Scenario": "Base scenario",
+            "Retirement age": retirement_age,
+            "Projected savings (S$)": final_amount,
+            "Notes": classification["label"],
+        }
+    ]
 
     with st.spinner("Generating explanation..."):
         explanation = explain_simulation_results(
-            user_inputs=user_inputs_dict,
+            user_inputs=sim_inputs,
             scenarios=scenarios_dicts,
             base_classification=classification,
         )
 
     st.markdown(explanation)
 
+    with st.expander("ℹ️ How to interpret these results", expanded=False):
+        st.markdown(
+            """
+- This simulator uses **simplified assumptions** about interest and contributions.  
+- Actual CPF balances depend on OA/SA/MA split, policy changes, and your exact history.  
+- Use this as a **thinking tool**, not a source of truth.  
+- Always check your real balances and use official CPF calculators for decisions.
+"""
+        )
+
     st.info(
         """
-        ⚠️ This explanation is generated by an LLM based on a **simplified simulator**.  
-        It does **not** reflect your actual CPF balances or entitlements. 
-        Always rely on official CPF calculators and statements for decisions.
-        """
+**Important:**  
+This simulation and explanation are for **educational purposes only**.  
+They do **not** represent actual CPF calculations or personalised financial advice.
+"""
     )

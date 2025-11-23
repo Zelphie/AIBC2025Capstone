@@ -3,71 +3,73 @@ import pandas as pd
 
 from backend.rag import answer_policy_question
 
+# NOTE: Do NOT call st.set_page_config here; it's already called in Home.py.
 
-st.title("💬 CPF Policy Explainer (Prototype)")
+st.title("💬 CPF Policy Explainer")
 
-st.write(
+st.markdown(
     """
-    Ask questions about CPF retirement policies in natural language.  
-    This page uses a Large Language Model (LLM) for **educational** explanations only.
-    Always verify with official CPF and gov.sg sources.
-    """
+Ask questions about CPF in **plain English** and get an explanation that is grounded in 
+a curated set of CPF materials.
+
+You can ask things like:
+
+- *“What is the Full Retirement Sum (FRS)?”*  
+- *“How much can I withdraw from CPF at age 55?”*  
+- *“What happens to my CPF when I buy a flat?”*  
+
+This page uses a Large Language Model (LLM) with **Retrieval-Augmented Generation (RAG)** 
+to provide simplified, educational explanations.
+"""
 )
 
-# ============================
-# ℹ️ BRS / FRS / ERS EXPLAINER (COLLAPSIBLE)
-# ============================
+# ---------------------------------------------------------------------
+# BRS / FRS / ERS explainer (collapsible)
+# ---------------------------------------------------------------------
 with st.expander("ℹ️ What are BRS, FRS, and ERS? (click to expand)"):
     st.markdown(
         """
-        CPF uses three benchmark amounts to determine how much you need for retirement:
+CPF uses three benchmark amounts to indicate how much savings you might need for retirement:
 
-        **• Basic Retirement Sum (BRS)**  
-        The minimum level of retirement savings that provides a basic monthly payout.  
-        Usually suitable for people who own a property **with sufficient lease** until age 95.
+**• Basic Retirement Sum (BRS)**  
+- Baseline amount for basic monthly payouts.  
+- Typically for members who **own a property** with sufficient lease.
 
-        **• Full Retirement Sum (FRS)**  
-        Roughly **2 × BRS**.  
-        Provides higher monthly payouts.  
-        Members who do not own a property (or whose property doesn’t meet lease conditions) 
-        typically need to set aside the FRS.
+**• Full Retirement Sum (FRS)**  
+- Roughly **2 × BRS**.  
+- Standard benchmark for members who do **not** rely on property for retirement income.
 
-        **• Enhanced Retirement Sum (ERS)**  
-        Roughly **3 × BRS**.  
-        A voluntary higher savings level that provides the highest CPF LIFE payouts.
+**• Enhanced Retirement Sum (ERS)**  
+- Roughly **3 × BRS** (or higher, depending on policy changes).  
+- For members who want the **highest CPF LIFE payouts** and can set aside more in CPF.
 
-        These benchmarks help CPF estimate how much monthly income you may receive at retirement.  
-        In this prototype, they are used only for **contextual explanations**, 
-        not for official calculations.
-        """
+These sums are cohort-based (linked to the year you turn 55) and are used to estimate what kind of 
+monthly payouts your CPF LIFE savings might support.
+"""
     )
 
-    # --- Visual 1: Comparison table ---
     comparison_df = pd.DataFrame(
         [
             {
                 "Retirement Sum": "BRS",
                 "Relative level": "1 × (baseline)",
-                "Typical use case": "Basic payout, usually for those with property (sufficient lease).",
+                "Typical use case": "Basic payouts, usually for those who own a property.",
             },
             {
                 "Retirement Sum": "FRS",
                 "Relative level": "2 × BRS",
-                "Typical use case": "Higher payout; often needed if you don't have a qualifying property.",
+                "Typical use case": "Standard benchmark, especially if you don't have a qualifying property.",
             },
             {
                 "Retirement Sum": "ERS",
                 "Relative level": "3 × BRS",
-                "Typical use case": "Optional higher savings for those who want higher CPF LIFE payouts.",
+                "Typical use case": "Optional higher savings for those who want higher payouts.",
             },
         ]
     )
 
     st.markdown("**Quick comparison:**")
     st.table(comparison_df)
-
-    # --- Visual 2: Simple bar chart for relative levels ---
-    st.markdown("**Relative levels (not actual dollars):**")
 
     relative_df = pd.DataFrame(
         {
@@ -76,62 +78,27 @@ with st.expander("ℹ️ What are BRS, FRS, and ERS? (click to expand)"):
         }
     ).set_index("Retirement Sum")
 
+    st.markdown("**Relative levels (illustration only):**")
     st.bar_chart(relative_df)
 
     st.caption(
-        "Illustration only: FRS is roughly 2 × BRS, and ERS is roughly 3 × BRS. "
-        "Exact dollar values change over time and depend on CPF's official schedules."
+        "Illustration only. The actual BRS / FRS / ERS dollar amounts depend on your cohort and CPF's official schedules."
     )
 
-    # --- Example: 35-year-old earning S$4,000/month ---
-    st.markdown("### 👤 Example: 35-year-old earning S$4,000/month")
+st.markdown("---")
 
-    st.markdown(
-        """
-        Imagine a typical **35-year-old Singaporean** with a monthly income of **S$4,000**.
+# ---------------------------------------------------------------------
+# Context form + question input
+# ---------------------------------------------------------------------
 
-        Over the next few decades, part of their CPF contributions will go into retirement savings.
-        How might BRS, FRS and ERS matter to them?
+st.subheader("📝 Ask a CPF Question")
 
-        Below is a **story-style illustration** (not an official projection):
-        """
-    )
-
-    example_df = pd.DataFrame(
-        [
-            {
-                "If they aim for...": "BRS",
-                "What it roughly means": (
-                    "They are okay with a more basic level of monthly payout in retirement, "
-                    "and they expect to still own a home with enough lease."
-                ),
-            },
-            {
-                "If they aim for...": "FRS",
-                "What it roughly means": (
-                    "They prefer a more comfortable payout, or they might not have a property "
-                    "that qualifies them to use BRS. They are targeting about twice the baseline savings."
-                ),
-            },
-            {
-                "If they aim for...": "ERS",
-                "What it roughly means": (
-                    "They want the highest CPF LIFE payouts they can get through CPF, and are willing "
-                    "to commit substantially more savings (about three times the baseline)."
-                ),
-            },
-        ]
-    )
-
-    st.table(example_df)
-
-    st.caption(
-        "This example is just to make the idea concrete. "
-        "It does **not** represent actual CPF requirements or advice for any specific person."
-    )
-
-st.divider()
-
+st.markdown(
+    """
+You can optionally provide some simple context (age band and income band) to help the app 
+tailor its explanation. All inputs are **generic** and **non-identifying**.
+"""
+)
 
 with st.form("policy_explainer_form"):
     col1, col2 = st.columns(2)
@@ -139,31 +106,27 @@ with st.form("policy_explainer_form"):
     with col1:
         age_band = st.selectbox(
             "Age band (optional)",
-            ["Prefer not to say", "Below 35", "35–44", "45–54", "55–64", "65 and above"],
-            index=0,
-        )
-        housing_status = st.selectbox(
-            "Housing situation (optional)",
             [
                 "Prefer not to say",
-                "No property",
-                "Own HDB",
-                "Own private property",
+                "Below 35",
+                "35–44",
+                "45–54",
+                "55–64",
+                "65 and above",
             ],
             index=0,
         )
 
     with col2:
-        savings_band = st.selectbox(
-            "Rough CPF savings band (optional)",
+        income_band = st.selectbox(
+            "Monthly income band (optional)",
             [
                 "Prefer not to say",
-                "Below BRS",
-                "Around BRS",
-                "Between BRS and FRS",
-                "Around FRS",
-                "Between FRS and ERS",
-                "At or above ERS",
+                "Below $2,500",
+                "$2,500–$4,000",
+                "$4,001–$6,000",
+                "$6,001-$10,000"
+                "Above $10,000",
             ],
             index=0,
         )
@@ -178,14 +141,16 @@ with st.form("policy_explainer_form"):
 
 if submitted:
     if not question.strip():
-        st.error("Please enter a question.")
+        st.error("Please enter a question before clicking **Ask**.")
         st.stop()
 
     profile_context = {
         "Age band": age_band,
-        "Housing status": housing_status,
-        "Savings band": savings_band,
+        "Income band": income_band,
     }
+
+    st.markdown("### 💭 Your question")
+    st.markdown(f"> {question.strip()}")
 
     with st.spinner("Thinking..."):
         answer = answer_policy_question(
@@ -193,12 +158,27 @@ if submitted:
             profile_context=profile_context,
         )
 
-    st.subheader("🧾 Answer (educational only)")
+    st.markdown("### 🧾 Explanation")
     st.markdown(answer)
 
     st.info(
         """
-        ⚠️ This explanation is generated by an LLM for **educational purposes only**.  
-        Please verify details using official CPF and gov.sg websites and calculators.
-        """
+**Reminder:**  
+This explanation is generated by an LLM and based on simplified CPF information.  
+It is meant **for education only** and may not capture all rules or your actual situation.  
+Please verify details using official CPF and gov.sg websites and calculators.
+"""
     )
+
+else:
+    with st.expander("💡 Not sure what to ask? Click for examples."):
+        st.markdown(
+            """
+Try asking:
+
+- *“What is the difference between BRS, FRS and ERS?”*  
+- *“What happens to my OA and SA when I turn 55?”*  
+- *“If I own an HDB flat, can I use BRS instead of FRS?”*  
+- *“How does CPF LIFE work in simple terms?”*
+"""
+        )
