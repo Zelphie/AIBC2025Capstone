@@ -1,0 +1,75 @@
+AIBC Capstone Assignment - Methodology
+
+Chosen Domain: Understanding CPF
+
+Help Singaporeans and PRs understand how CPF policies affect their retirement income, withdrawals from age 55, and the use of CPF for housing and the trade-offs between housing and retirement savings.
+
+Goal: Provide a single interface where users can ask natural language questions about the CPF policies.
+
+###########################################################################
+Use Case 1 - Policy Explainer Chatbot using LLM + RAG
+The app has to maintain a curated knowledge base of CPF pages.
+
+User inputs:
+1. Age
+2. Income Band
+
+The chatbot will prompt users for these key information to personalize the results to the user.
+
+App shows:
+1. Key policies that apply
+2. Simple explanation that is contextualized to user's query
+3. Links to official sources
+4. Q&A / follow up questions
+
+The output will be shown in a chat-style answer in plain language, with small tables (if applicable) and source citations.
+
+Data sources:
+1. Recursively scrape the CPF website
+
+Flowchart:
+1. User opens "Policy Explainer page"
+2. User selects optional context inputs (Age and income band)
+3. User enters his query.
+4. User clicks Ask
+5. App combines structured inputs and user query in to an improved query
+6. Query is embedded
+7. Vector DB performs retireval using similarity search
+8. App contstructs LLM prompt containing the user's question, retrieved text chunks and instructions
+9. LLM generates output
+10. App displays the output
+11. User may ask follow-up questions and the loop repeats
+###########################################################################
+Use Case 2 - Simple Retirement Simulator
+
+
+User inputs:
+1. Current Age (Slider)
+2. Planned Retirement Age (Slider)
+3. Current CPF Savings (Number Input)
+4. Current monthly CPF contribution (Number Input)
+5. Expected growth in contributions (slider 0-3%)
+6. Target retirement income per month (Number Input)
+
+App shows:
+1. Projected CPF retirement savings at chosen retirement age
+2. A simple graph to show the growth
+3. LLM-generated explanation
+
+Data sources:
+1. Recursively scrape the CPF website
+
+Flowchart:
+1. User opens the "Retirement Planning Simulator page"
+2. User inputs required fields mentioned above.
+3. User clicks "Run Simulation"
+4. App validates inputs and proceeds.
+5. App calculates and produces final projected savings at retirement
+6. App builds an RAG query using user profile, projected savings and retirement amount
+7. VectorDB retrieves relevant text chunks.
+8. App constructs an LLM promopt including numeric results, retrieved chunks, instructions for a simple explanation, trade-offs and actionable insights, and disclaimers
+9. LLM generates a narrative explanation, with key insights and provides link to official calculators and includes notes on limitations
+10. App displays the scenario summary card, numeric projection results, a graph to show the growth, and the LLM explanation
+11. User may adjust inputs and run the simluation again.
+
+##############################################################################
